@@ -12,7 +12,7 @@ import {
     DEFAULT_REPO,
     EXCLUDED_VERSION_BRANCHES,
     getAssetPath, getEntryJSON, getEntryText, getGeneratedAssetPath,
-    getManualPath, repos
+    getManualPath, getRepoBase, repos
 } from "./resources";
 import {useNavigate, useParams} from "react-router";
 import {SelectDropdown} from "./generic_elements";
@@ -25,6 +25,8 @@ function clearManual() {
         delete CATEGORIES[key];
     for (let key in ENTRIES)
         delete ENTRIES[key];
+    repos.length = 0;
+    repos.push(DEFAULT_REPO);
 }
 
 function loadCategory(repo, branch, lang, key, category, entryPromises, toplevel) {
@@ -104,6 +106,22 @@ async function fetchSupportedBranches() {
     }
 }
 
+async function addRepos(baseRepos) {
+    const repoPromises = [];
+    for (const base of baseRepos) {
+        const infoPath = `${getRepoBase(base)}/manual-data/info/manual-info.json`;
+        repoPromises.push(fetch(infoPath).then(async r => [await r.json() || {}, base]));
+    }
+    for (const [json, repo] of await Promise.all(repoPromises)) {
+        repos.push({
+            owner: repo.owner,
+            name: repo.name,
+            modid: json.modid || repo.name.toLowerCase(),
+            branchMap: json.branchMap || {},
+        });
+    }
+}
+
 function App() {
     return (
         <div className="manual">
@@ -121,18 +139,19 @@ function LanguageChoice(props) {
     const currentBranch = props.branch;
     const currentLang = props.lang;
     let navigate = useNavigate();
+    const [search, _] = useSearchParams();
     if (useParams()['*'])
         return null;
     return <header>
         <SelectDropdown label="Version: " defaultValue={currentBranch} options={supportedBranches}
                         onChange={(val) => {
-                            navigate(`/${currentLang}/${val}`);
+                            navigate(`/${currentLang}/${val}?${search.toString()}`);
                             window.location.reload(false);
                         }}/>
         <br/>
         <SelectDropdown label="Language: " defaultValue={currentLang} options={SUPPORTED_LANGUAGES}
                         onChange={(val) => {
-                            navigate(`/${val}/${currentBranch}`);
+                            navigate(`/${val}/${currentBranch}?${search.toString()}`);
                             window.location.reload(false);
                         }}/>
     </header>
@@ -141,10 +160,16 @@ function LanguageChoice(props) {
 // This is a stupid workaround necessitated by react-router v6,
 // because useParams can only be used in function components, not class components
 function ManualWrapper() {
-    // TODO somehow include addon repos
+    const [searchParms, _] = useSearchParams();
+    const extraRepos = [];
+    for (const repo of searchParms.getAll('addonRepo')) {
+        const split = repo.split(':');
+        extraRepos.push({owner: split[0], name: split[1]});
+    }
     return <Manual
         branch={useParams()['branch']}
         lang={useParams()['lang']}
+        extraRepos={extraRepos}
     />;
 }
 
@@ -173,7 +198,10 @@ class Manual extends React.Component {
         const getFiles = async () => {
             // clean up
             clearManual();
-            await fetchSupportedBranches();
+            await Promise.all([
+                fetchSupportedBranches(),
+                addRepos(this.props.extraRepos),
+            ]);
             if (branch === LATEST_BRANCH) {
                 branch = supportedBranches[0];
             } else if (branch === STABLE_BRANCH) {
@@ -252,19 +280,20 @@ function ManualContent(props) {
 }
 
 function EntryList(props) {
+    const [search, _] = useSearchParams();
     return <>
         <h2>{translate(prefixManual(props.title))}</h2>
         <ul className="entry-list">
             {props.categories.map(key =>
                 <li key={key} className='category'>
-                    <Link to={key}>
+                    <Link to={key + '?' + search.toString()}>
                         {translate(prefixManual(key))}
                     </Link>
                 </li>
             )}
             {props.entries.map(key =>
                 <li key={key} className='entry'>
-                    <Link to={key}>
+                    <Link to={key + '?' + search.toString()}>
                         {translate(prefixManual(key))}
                     </Link>
                 </li>
