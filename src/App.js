@@ -1,6 +1,6 @@
 import './styling/manual.scss';
 import React from "react";
-import {Link, Navigate, Route, Routes} from 'react-router-dom'
+import {Link, Navigate, Route, Routes, useSearchParams} from 'react-router-dom'
 import {ManualEntry} from "./manual_entry";
 import {
     addTranslation,
@@ -8,7 +8,12 @@ import {
     prefixManual, SUPPORTED_LANGUAGES,
     translate,
 } from "./localization";
-import {EXCLUDED_VERSION_BRANCHES, getAssetPath, getManualPath, REPO_NAME, REPO_OWNER} from "./resources";
+import {
+    DEFAULT_REPO,
+    EXCLUDED_VERSION_BRANCHES,
+    getAssetPath, getEntryJSON, getEntryText, getGeneratedAssetPath,
+    getManualPath, repos
+} from "./resources";
 import {useNavigate, useParams} from "react-router";
 import {SelectDropdown} from "./generic_elements";
 
@@ -22,7 +27,7 @@ function clearManual() {
         delete ENTRIES[key];
 }
 
-function loadCategory(branch, lang, key, category, entryPromises, toplevel) {
+function loadCategory(repo, branch, lang, key, category, entryPromises, toplevel) {
     // check that it's a valid category
     if (typeof category === 'object' && 'entry_list' in category) {
         CATEGORIES[key] = {
@@ -34,21 +39,21 @@ function loadCategory(branch, lang, key, category, entryPromises, toplevel) {
         delete category['category_weight'];
         delete category['entry_list'];
         // do deferred loading of the entries
-        CATEGORIES[key].entries.forEach(key => entryPromises.push(loadEntry(branch, lang, key)));
+        CATEGORIES[key].entries.forEach(key => entryPromises.push(loadEntry(repo, branch, lang, key)));
         // any remaining keys are assumed to be subcategories
         for (let subKey in category) {
             CATEGORIES[key].subcategories.push(subKey);
-            loadCategory(branch, lang, subKey, category[subKey], entryPromises, false);
+            loadCategory(repo, branch, lang, subKey, category[subKey], entryPromises, false);
         }
         return CATEGORIES[key];
     }
     return null;
 }
 
-function loadEntry(branch, lang, key) {
-    let url_data = `${getManualPath(branch)}${key}.json`;
-    let url_text = `${getManualPath(branch)}${lang}/${key}.txt`;
-    let url_text_backup = `${getManualPath(branch)}${DEFAULT_LANGUAGE}/${key}.txt`;
+function loadEntry(repo, branch, lang, key) {
+    let url_data = getEntryJSON(branch, repo, key);
+    let url_text = getEntryText(branch, repo, key, lang);
+    let url_text_backup = getEntryText(branch, repo, key, DEFAULT_LANGUAGE);
     return Promise.all([
         fetch(url_data).then(res => res.json()),
         fetch(url_text).then(res => res.status === 200 ? res.text() : fetch(url_text_backup).then(res => res.text())),
@@ -82,7 +87,8 @@ let supportedBranches;
 let stableBranch;
 
 async function fetchSupportedBranches() {
-    const baseURL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
+    // TODO intersection of supported branches over all selected repos?
+    const baseURL = `https://api.github.com/repos/${DEFAULT_REPO.owner}/${DEFAULT_REPO.name}`;
     const repoResponse = fetch(baseURL);
     const branchesResponse = fetch(baseURL+'/branches');
     const branchesJSON = await (await branchesResponse).json();
@@ -135,7 +141,11 @@ function LanguageChoice(props) {
 // This is a stupid workaround necessitated by react-router v6,
 // because useParams can only be used in function components, not class components
 function ManualWrapper() {
-    return <Manual branch={useParams()['branch']} lang={useParams()['lang']}/>;
+    // TODO somehow include addon repos
+    return <Manual
+        branch={useParams()['branch']}
+        lang={useParams()['lang']}
+    />;
 }
 
 class Manual extends React.Component {
@@ -169,24 +179,11 @@ class Manual extends React.Component {
             } else if (branch === STABLE_BRANCH) {
                 branch = stableBranch;
             }
-            // get english default translation file
-            await fetch(`${getAssetPath(branch)}lang/${DEFAULT_LANGUAGE}.json`)
-                .then(res => res.json())
-                .then(out => addTranslationMultiple(out));
-            // get specific translation file
-            await fetch(`${getAssetPath(branch)}lang/${lang}.json`)
-                .then(res => res.json())
-                .then(out => addTranslationMultiple(out));
-            // then get the manual index
-            let entryPromises = []
-            await fetch(`${getManualPath(branch)}autoload.json`)
-                .then(res => res.json())
-                .then(data => {
-                    for (let key in data)
-                        loadCategory(branch, lang, key, data[key], entryPromises, true);
-                });
-            // then await all pages loading
-            await Promise.all(entryPromises);
+            const repoPromises = [];
+            for (const repo of repos) {
+                repoPromises.push(this.fetchRepo(repo, lang, branch));
+            }
+            await Promise.all(repoPromises);
             // finally update component
             this.setState({
                 initialized: true,
@@ -196,6 +193,35 @@ class Manual extends React.Component {
         getFiles();
     }
 
+    async fetchRepo(repo, lang, branch) {
+        // TODO handle case where some repos don't not have the branch
+        // get english default translation file
+        await this.addTranslation(repo, DEFAULT_LANGUAGE, branch);
+        if (lang !== DEFAULT_LANGUAGE) {
+            // get specific translation file if different
+            await this.addTranslation(repo, lang, branch);
+        }
+        // then get the manual index
+        let entryPromises = []
+        await fetch(`${getManualPath(branch, repo)}autoload.json`)
+            .then(res => res.json())
+            .then(data => {
+                for (let key in data)
+                    loadCategory(repo, branch, lang, key, data[key], entryPromises, true);
+            });
+        // then await all pages loading
+        await Promise.all(entryPromises);
+    }
+
+    async addTranslation(repo, lang, branch) {
+        const suffix = `lang/${lang}.json`;
+        let response = await fetch(getAssetPath(branch, repo) + suffix);
+        if (!response.ok) {
+            response = await fetch(getGeneratedAssetPath(branch, repo) + suffix);
+        }
+        let langJSON = await response.json();
+        addTranslationMultiple(langJSON);
+    }
 }
 function BackButton() {
     return useParams()['*'] && <button id="back_button" onClick={() => window.history.back()}/>;

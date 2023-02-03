@@ -4,22 +4,70 @@ export const EXCLUDED_VERSION_BRANCHES = new Set([
 
 export const MOD_ID = 'immersiveengineering';
 
-export const REPO_OWNER = 'BluSunrize';
-export const REPO_NAME = 'ImmersiveEngineering';
+export const DEFAULT_REPO = {
+    owner: 'BluSunrize', name: 'ImmersiveEngineering', modid: MOD_ID, branchMap: {}
+};
 
-const REPO_BASE = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}`;
+// TODO dynamically initialize somehow, or at least reset and re-init
+export const repos = [
+    DEFAULT_REPO,
+    {
+        owner: 'malte0811',
+        name: 'ControlEngineering',
+        modid: 'controlengineering',
+        branchMap: {
+            "1.18.2": "main",
+            "1.19.2": "1.19",
+        }
+    },
+];
 
-export const getAssetPath = (branch) => `${REPO_BASE}/${branch}/src/main/resources/assets/immersiveengineering/`;
+function realBranch(repo, branch) {
+    return repo.branchMap[branch] || branch;
+}
 
-export const getManualPath = (branch) => getAssetPath(branch)+'manual/';
+function getRepoBase(repo) {
+    return `https://raw.githubusercontent.com/${repo.owner}/${repo.name}`;
+}
 
-export const getRecipePath = (branch) => `${REPO_BASE}/${branch}/src/generated/resources/data/immersiveengineering/recipes/`
+export function getAssetPath(branch, repo) {
+    return `${getRepoBase(repo)}/${realBranch(repo, branch)}/src/main/resources/assets/${repo.modid}/`;
+}
 
-export const getDataExportPath = (branch) => `${REPO_BASE}/manual-data/${branch}/`
+export function getGeneratedAssetPath(branch, repo) {
+    return `${getRepoBase(repo)}/${realBranch(repo, branch)}/src/generated/resources/assets/${repo.modid}/`;
+}
 
-export const getIconPath = (branch) => getDataExportPath(branch)+'icons/'
+export function getManualPath(branch, repo) {
+    return `${getRepoBase(repo)}/${realBranch(repo, branch)}/src/main/resources/assets/immersiveengineering/manual/`;
+}
 
-export const getTagPath = (branch) => getDataExportPath(branch)+'tags'
+export function getEntryJSON(branch, repo, entryName) {
+    const decomposed = decomposeResourceLocation(entryName);
+    return `${getRepoBase(repo)}/${realBranch(repo, branch)}/src/main/resources/assets/${decomposed.domain}/manual/${decomposed.name}.json`;
+}
+
+export function getEntryText(branch, repo, entryName, lang) {
+    const decomposed = decomposeResourceLocation(entryName);
+    return `${getRepoBase(repo)}/${realBranch(repo, branch)}/src/main/resources/assets/${decomposed.domain}/manual/${lang}/${decomposed.name}.txt`;
+}
+
+export function getRecipePath(branch, repo, recipeName) {
+    const decomposed = decomposeResourceLocation(recipeName);
+    return `${getRepoBase(repo)}/${realBranch(repo, branch)}/src/generated/resources/data/${decomposed.domain}/recipes/${decomposed.name}.json`;
+}
+
+export function getDataExportPath(branch, repo) {
+    return `${getRepoBase(repo)}/manual-data/${realBranch(repo, branch)}/`;
+}
+
+export function getIconPath(branch, repo) {
+    return getDataExportPath(branch, repo)+'icons';
+}
+
+export function getTagPath(branch, repo) {
+    return getDataExportPath(branch, repo)+'tags';
+}
 
 /** This is super hacky and probably a bad idea, but it's holding so far! */
 export function reactSetStateWrapper(element, state, mountKeyword = 'loaded') {
@@ -39,3 +87,14 @@ export function elementHasClass(element, css_class){
         return false;
     return element.classList.contains(css_class);
 }
+
+export function decomposeResourceLocation(fullName) {
+    if (!fullName) {
+        return {domain: undefined, name: undefined};
+    }
+    let split = fullName.split(':');
+    let domain = split.length > 1 ? split[0] : MOD_ID;
+    let name = split[split.length - 1];
+    return {domain: domain, name: name};
+}
+
