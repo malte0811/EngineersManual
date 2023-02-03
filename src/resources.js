@@ -8,25 +8,13 @@ export const DEFAULT_REPO = {
     owner: 'BluSunrize', name: 'ImmersiveEngineering', modid: MOD_ID, branchMap: {}
 };
 
-// TODO dynamically initialize somehow, or at least reset and re-init
-export const repos = [
-    DEFAULT_REPO,
-    {
-        owner: 'malte0811',
-        name: 'ControlEngineering',
-        modid: 'controlengineering',
-        branchMap: {
-            "1.18.2": "main",
-            "1.19.2": "1.19",
-        }
-    },
-];
+export const repos = [];
 
 function realBranch(repo, branch) {
     return repo.branchMap[branch] || branch;
 }
 
-function getRepoBase(repo) {
+export function getRepoBase(repo) {
     return `https://raw.githubusercontent.com/${repo.owner}/${repo.name}`;
 }
 
