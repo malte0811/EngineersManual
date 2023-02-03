@@ -1,4 +1,4 @@
-import {MOD_ID} from "./resources";
+import {decomposeResourceLocation, MOD_ID} from "./resources";
 
 const re_args = /%(\d+\$)?([A-Za-z%]|$)/g;
 const re_snake_case = /(?:^|_)([\w\d])/g;
@@ -78,5 +78,6 @@ export function upperCaseName(name) {
 }
 
 export function prefixManual(key) {
-    return `manual.${MOD_ID}.${key}`;
+    const decomposed = decomposeResourceLocation(key);
+    return `manual.${decomposed.domain}.${decomposed.name}`;
 }

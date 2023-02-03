@@ -8,7 +8,7 @@ import {verifyEntryExists} from "./App";
 import {useDrag} from "@use-gesture/react";
 
 const re_anchor = /<&(\w+)>/g;
-const re_link = /<link;(\w+);([^;]*?)(?:;([^>]*))?>/g;
+const re_link = /<link;([^;]+);([^;]*?)(?:;([^>]*))?>/g;
 const re_keybind = /<keybind;([\w.]+)>/g;
 const re_formatting = /§([^r])(.+?)§r/g;
 

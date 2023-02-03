@@ -1,7 +1,14 @@
 import React from "react";
 import {Tooltip} from "./generic_elements";
 import {translateIEItem, upperCaseName} from "./localization";
-import {getAssetPath, getIconPath, getRecipePath, getTagPath, MOD_ID} from "./resources";
+import {
+    decomposeResourceLocation, DEFAULT_REPO,
+    getAssetPath,
+    getIconPath,
+    getRecipePath,
+    getTagPath,
+    MOD_ID, repos
+} from "./resources";
 
 const SPECIAL_ELEMENT_HEIGHTS = {
     crafting: (e) => 'recipe' in e ? 7 : 'recipes' in e ? 7 * e['recipes'].length : 1,
@@ -28,6 +35,23 @@ function makeCache(responseProcessor) {
 
 const fetchJSON = makeCache(r => r.json());
 const fetchBlob = makeCache(r => r.blob());
+
+async function getFirst(urlFromRepo, fetchFunc) {
+    const repoRequests = [];
+    for (const repo of repos) {
+        repoRequests.push(fetchFunc(urlFromRepo(repo)));
+    }
+    for (const resultPromise of repoRequests) {
+        const result = await resultPromise;
+        if (result) {
+            return result;
+        }
+    }
+}
+
+async function getFirstJSON(urlFromRepo) {
+    return getFirst(urlFromRepo, fetchJSON);
+}
 
 export function loadSpecialElement(branch, element) {
     // normal recipes
@@ -61,7 +85,8 @@ export function loadSpecialElement(branch, element) {
                         let scale = 55 / image['uSize'];
                         let offset = [-scale * image['uMin'], -scale * image['vMin']];
                         let style = {
-                            'backgroundImage': `url(${getAssetPath(branch)}${image['location']})`,
+                            // TODO
+                            'backgroundImage': `url(${getAssetPath(branch, DEFAULT_REPO)}${image['location']})`,
                             'height': `${scale * image['vSize']}vmin`,
                             'backgroundSize': `${Math.round(256 / image['uSize'] * 100)}%`,
                             'backgroundPosition': `${offset[0]}vmin ${offset[1]}vmin`
@@ -99,13 +124,6 @@ export function getSpecialHeight(element) {
     return SPECIAL_ELEMENT_HEIGHTS[type](element) || 0;
 }
 
-function decomposeResourceLocation(fullName) {
-    let split = fullName.split(':');
-    let domain = split.length > 1 ? split[0] : MOD_ID;
-    let name = split[split.length - 1];
-    return {domain: domain, name: name};
-}
-
 function ingredientTooltip(currentItemParts, ingredient) {
     let tagInfo;
     if (ingredient['tag']) {
@@ -134,9 +152,8 @@ function getItemsToShow(ingredient, branch) {
     if (ingredient['item']) {
         return [decomposeResourceLocation(ingredient['item'])];
     } else if (ingredient['tag']) {
-        const basePath = getTagPath(branch);
         const tagParts = decomposeResourceLocation(ingredient['tag']);
-        return fetchJSON(`${basePath}/${tagParts.domain}/${tagParts.name}.json`)
+        return getFirstJSON(repo => `${getTagPath(branch, repo)}/${tagParts.domain}/${tagParts.name}.json`)
             .then(res => res.map(decomposeResourceLocation))
             .catch(err => undefined);
     }
@@ -199,6 +216,10 @@ class Recipe extends React.Component {
             return Recipe.buildShapedRecipe(this.props.name, this.props.data);
         else if (this.props.data['ingredients'])
             return Recipe.buildShapelessRecipe(this.props.name, this.props.data);
+        else {
+            console.log("Failed recipe", this.props);
+            return <div>Failed to parse recipe</div>;
+        }
     }
 
     static loadRecipeFromElement(branch, element) {
@@ -210,22 +231,34 @@ class Recipe extends React.Component {
     }
 
     static async loadRecipe(branch, key) {
-        let json = await fetchJSON(`${getRecipePath(branch)}${key}.json`);
+        let json = await getFirstJSON(repo => getRecipePath(branch, repo, key));
+        if (!json) {
+            return <div key={key}>Failed to load recipe {key}</div>;
+        }
         if ('baseRecipe' in json) {
             json = json['baseRecipe'];
         }
         const recipeData = {};
+        const resultPromise = PreparedIngredient.of(json.result, branch);
         if ('pattern' in json) {
-            let newKeys = {};
+            let keyList = []
+            let valueList = [];
             for (const key in json.key) {
-                newKeys[key] = await PreparedIngredient.of(json.key[key], branch);
+                valueList.push(PreparedIngredient.of(json.key[key], branch));
+                keyList.push(key);
+            }
+            let newKeys = {};
+            for (let i = 0; i < keyList.length; ++i) {
+                newKeys[keyList[i]] = await valueList[i];
             }
             recipeData['key'] = newKeys;
             recipeData['pattern'] = json['pattern'];
         } else if ('ingredients' in json) {
             recipeData['ingredients'] = await Promise.all(json.ingredients.map(e => PreparedIngredient.of(e, branch)));
+        } else {
+            return <div>Unknown recipe {key}</div>;
         }
-        recipeData['result'] = await PreparedIngredient.of(json.result, branch);
+        recipeData['result'] = await resultPromise;
         return <Recipe name={key} key={key} data={recipeData}/>;
     }
 
@@ -285,9 +318,7 @@ class MultiRecipe extends React.Component {
 }
 
 async function imageForItem(item, branch) {
-    const basePath = getIconPath(branch);
-    const iconPath = basePath + item.domain + '/' + item.name + '.png';
-    const blob = await fetchBlob(iconPath);
+    const blob = await getFirst(repo => `${getIconPath(branch, repo)}/${item.domain}/${item.name}.png`, fetchBlob);
     if (blob) {
         return <img className="item-icon" alt={item.domain + ':' + item.name} src={URL.createObjectURL(blob)}/>;
     } else {
@@ -308,7 +339,7 @@ function Ingredient(props) {
     if (!ingredient)
         return <div className="item empty"/>;
     else {
-        const currentOption = ingredient.options[optionId];
+        const currentOption = ingredient.options[optionId] || ingredient.options[0];
         return <div className="item" onMouseMove={
             event => {
                 let tooltip = event.currentTarget.querySelector('.tooltip');
@@ -347,12 +378,11 @@ class Blueprint extends React.Component {
     }
 
     static loadRecipes(branch, recipes) {
-        return Promise.all(recipes.map(
-            obj => obj['item'].split(':').pop()
-        ).map(
-            key => fetchJSON(`${getRecipePath(branch)}blueprint/${key}.json`)
+        return Promise.all(recipes.map(recipe => {
+            const key = recipe['item'] ? `blueprint/${recipe.item}` : recipe;
+            return getFirstJSON(repo => getRecipePath(branch, repo, key))
                 .then(out => Blueprint.buildRecipe(key, out, branch))
-        )).then(values => <Blueprint recipes={values}/>);
+        })).then(values => <Blueprint recipes={values}/>);
     }
 
     static async buildRecipe(name, data, branch) {
