@@ -123,13 +123,17 @@ async function addRepos(baseRepos) {
 }
 
 function App() {
+    const [search] = useSearchParams();
     return (
         <div className="manual">
             <Routes>
                 <Route path={':lang/*'}>
                     <Route path={':branch/*'} element={<ManualWrapper/>}/>
                 </Route>
-                <Route path="*" element={<Navigate to={`${DEFAULT_LANGUAGE}/${STABLE_BRANCH}`}/>}/>
+                <Route path="*" element={<Navigate to={{
+                    pathname: `${DEFAULT_LANGUAGE}/${STABLE_BRANCH}`,
+                    search: '?' + search.toString(),
+                }}/>}/>
             </Routes>
         </div>
     );
@@ -139,19 +143,25 @@ function LanguageChoice(props) {
     const currentBranch = props.branch;
     const currentLang = props.lang;
     let navigate = useNavigate();
-    const [search, _] = useSearchParams();
+    const [search] = useSearchParams();
     if (useParams()['*'])
         return null;
     return <header>
         <SelectDropdown label="Version: " defaultValue={currentBranch} options={supportedBranches}
                         onChange={(val) => {
-                            navigate(`/${currentLang}/${val}?${search.toString()}`);
+                            navigate({
+                                pathname: `/${currentLang}/${val}`,
+                                search: `?${search.toString()}`,
+                            });
                             window.location.reload(false);
                         }}/>
         <br/>
         <SelectDropdown label="Language: " defaultValue={currentLang} options={SUPPORTED_LANGUAGES}
                         onChange={(val) => {
-                            navigate(`/${val}/${currentBranch}?${search.toString()}`);
+                            navigate({
+                                pathname: `/${val}/${currentBranch}`,
+                                search: `?${search.toString()}`,
+                            });
                             window.location.reload(false);
                         }}/>
     </header>
@@ -160,7 +170,7 @@ function LanguageChoice(props) {
 // This is a stupid workaround necessitated by react-router v6,
 // because useParams can only be used in function components, not class components
 function ManualWrapper() {
-    const [searchParms, _] = useSearchParams();
+    const [searchParms] = useSearchParams();
     const extraRepos = [];
     for (const repo of searchParms.getAll('addonRepo')) {
         const split = repo.split(':');
@@ -280,20 +290,26 @@ function ManualContent(props) {
 }
 
 function EntryList(props) {
-    const [search, _] = useSearchParams();
+    const [search] = useSearchParams();
     return <>
         <h2>{translate(prefixManual(props.title))}</h2>
         <ul className="entry-list">
             {props.categories.map(key =>
                 <li key={key} className='category'>
-                    <Link to={key + '?' + search.toString()}>
+                    <Link to={{
+                        pathname: key,
+                        search: '?' + search.toString()
+                    }}>
                         {translate(prefixManual(key))}
                     </Link>
                 </li>
             )}
             {props.entries.map(key =>
                 <li key={key} className='entry'>
-                    <Link to={key + '?' + search.toString()}>
+                    <Link to={{
+                        pathname: key,
+                        search: '?' + search.toString()
+                    }}>
                         {translate(prefixManual(key))}
                     </Link>
                 </li>
