@@ -4,7 +4,6 @@ import {
     Anchor, ConfigBool, ConfigInt, ConfigIntArray, Formatting, KeyBind, ManualLink, PageBreak, Tooltip
 } from "./generic_elements";
 import {reactSetStateWrapper} from "./resources";
-import {verifyEntryExists} from "./App";
 import {useDrag} from "@use-gesture/react";
 
 const re_anchor = /<&(\w+)>/g;
@@ -143,8 +142,6 @@ export class ManualEntry extends React.Component {
             // local reference
             if (link === 'this')
                 link = ''
-            else
-                verifyEntryExists(this.props.branch, this.props.lang, link);
             return <ManualLink key={link + '?' + anchor} link={link} anchor={anchor} length={text.length}
                                text={this.handleReplacements(text)}/>;
         });

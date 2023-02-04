@@ -76,12 +76,6 @@ function loadEntry(repo, branch, lang, key) {
     });
 }
 
-export function verifyEntryExists(branch, lang, key) {
-    if (!(key in ENTRIES))
-        return loadEntry(branch, lang, key);
-    return new Promise(resolve => resolve());
-}
-
 const LATEST_BRANCH = 'latest';
 const STABLE_BRANCH = 'stable';
 
@@ -110,7 +104,7 @@ async function addRepos(baseRepos) {
     const repoPromises = [];
     for (const base of baseRepos) {
         const infoPath = `${getRepoBase(base)}/manual-data/info/manual-info.json`;
-        repoPromises.push(fetch(infoPath).then(async r => [await r.json() || {}, base]));
+        repoPromises.push(fetch(infoPath).then(async r => [await r.json().catch(() => ({})) || {}, base]));
     }
     for (const [json, repo] of await Promise.all(repoPromises)) {
         repos.push({
@@ -232,12 +226,15 @@ class Manual extends React.Component {
     }
 
     async fetchRepo(repo, lang, branch) {
-        // TODO handle case where some repos don't not have the branch
         // get english default translation file
-        await this.addTranslation(repo, DEFAULT_LANGUAGE, branch);
+        let foundTranslation = await this.addTranslation(repo, DEFAULT_LANGUAGE, branch);
         if (lang !== DEFAULT_LANGUAGE) {
             // get specific translation file if different
-            await this.addTranslation(repo, lang, branch);
+            foundTranslation |= await this.addTranslation(repo, lang, branch);
+        }
+        if (!foundTranslation) {
+            // Branch probably just does not exist in this repo
+            return;
         }
         // then get the manual index
         let entryPromises = []
@@ -256,9 +253,13 @@ class Manual extends React.Component {
         let response = await fetch(getAssetPath(branch, repo) + suffix);
         if (!response.ok) {
             response = await fetch(getGeneratedAssetPath(branch, repo) + suffix);
+            if (!response.ok) {
+                return false;
+            }
         }
         let langJSON = await response.json();
         addTranslationMultiple(langJSON);
+        return true;
     }
 }
 function BackButton() {
