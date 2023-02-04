@@ -9,6 +9,7 @@ import {
     translate,
 } from "./localization";
 import {
+    BASE_PATH,
     DEFAULT_REPO,
     EXCLUDED_VERSION_BRANCHES,
     getAssetPath, getEntryJSON, getEntryText, getGeneratedAssetPath,
@@ -121,13 +122,15 @@ function App() {
     return (
         <div className="manual">
             <Routes>
-                <Route path={':lang/*'}>
-                    <Route path={':branch/*'} element={<ManualWrapper/>}/>
+                <Route path={`:${BASE_PATH}/*`}>
+                    <Route path={':lang/*'}>
+                        <Route path={':branch/*'} element={<ManualWrapper/>}/>
+                    </Route>
+                    <Route path="*" element={<Navigate to={{
+                        pathname: `${DEFAULT_LANGUAGE}/${STABLE_BRANCH}`,
+                        search: '?' + search.toString(),
+                    }}/>}/>
                 </Route>
-                <Route path="*" element={<Navigate to={{
-                    pathname: `${DEFAULT_LANGUAGE}/${STABLE_BRANCH}`,
-                    search: '?' + search.toString(),
-                }}/>}/>
             </Routes>
         </div>
     );
@@ -144,7 +147,7 @@ function LanguageChoice(props) {
         <SelectDropdown label="Version: " defaultValue={currentBranch} options={supportedBranches}
                         onChange={(val) => {
                             navigate({
-                                pathname: `/${currentLang}/${val}`,
+                                pathname: `/${BASE_PATH}/${currentLang}/${val}`,
                                 search: `?${search.toString()}`,
                             });
                             window.location.reload(false);
@@ -153,7 +156,7 @@ function LanguageChoice(props) {
         <SelectDropdown label="Language: " defaultValue={currentLang} options={SUPPORTED_LANGUAGES}
                         onChange={(val) => {
                             navigate({
-                                pathname: `/${val}/${currentBranch}`,
+                                pathname: `/${BASE_PATH}/${val}/${currentBranch}`,
                                 search: `?${search.toString()}`,
                             });
                             window.location.reload(false);
@@ -287,7 +290,7 @@ function ManualContent(props) {
                           entries={CATEGORIES[subpage].entries}/>;
     else if (subpage in ENTRIES)
         return ENTRIES[subpage];
-    return <Navigate to='/'/>;
+    return <Navigate to={`/${BASE_PATH}`}/>;
 }
 
 function EntryList(props) {

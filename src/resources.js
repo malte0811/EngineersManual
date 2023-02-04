@@ -3,6 +3,7 @@ export const EXCLUDED_VERSION_BRANCHES = new Set([
 ]);
 
 export const MOD_ID = 'immersiveengineering';
+export const BASE_PATH = 'EngineersManual';
 
 export const DEFAULT_REPO = {
     owner: 'BluSunrize', name: 'ImmersiveEngineering', modid: MOD_ID, branchMap: {}
